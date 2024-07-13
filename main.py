@@ -1,32 +1,82 @@
 import math
 import random
+
 import matplotlib.pyplot as plt
 
 c = 299792458  # speed of light in m/s
 G = 6.67430e-11  # gravitational constant in m^3 kg^-1 s^-2
+k_e = 8.9875517873681764e9  # Coulomb constant in N m^2 C^-2
+
 
 class ElectricField:
-    def __init__(self, field_function):
-        self.field_function = field_function
+    def __init__(self):
+        self.field_contributions = []
 
-    def apply(self, particle, time_step):
-        field_strength = self.field_function(particle.positions[-1])
+    def update(self, particles):
+        self.field_contributions = []
+        for particle in particles:
+            if particle.charge != 0:
+                self.field_contributions.append(particle)
+
+    def field_at(self, position):
+        Ex, Ey, Ez = 0, 0, 0
+        for particle in self.field_contributions:
+            dx, dy, dz = [
+                position[i] - particle.positions[-1][i] for i in range(3)
+            ]
+            r = math.sqrt(dx**2 + dy**2 + dz**2)
+            if r == 0:
+                continue
+            force_magnitude = k_e * particle.charge / r**2
+            Ex += force_magnitude * dx / r
+            Ey += force_magnitude * dy / r
+            Ez += force_magnitude * dz / r
+        return [Ex, Ey, Ez]
+
+    def apply(self, particle, time_step, field_strength):
         force = [particle.charge * f for f in field_strength]
-
         if particle.mass > 0:
             acceleration = [f / particle.mass for f in force]
-            new_velocity = [particle.velocity[i] + acceleration[i] * time_step for i in range(len(particle.velocity))]
+            new_velocity = [
+                particle.velocity[i] + acceleration[i] * time_step
+                for i in range(len(particle.velocity))
+            ]
             particle.update_velocity(new_velocity)
 
-class MagneticField:
-    def __init__(self, field_function):
-        self.field_function = field_function
 
-    def apply(self, particle, time_step):
+class MagneticField:
+    def __init__(self):
+        self.field_contributions = []
+
+    def update(self, particles):
+        self.field_contributions = []
+        for particle in particles:
+            if particle.charge != 0 and particle.mass != 0:
+                self.field_contributions.append(particle)
+
+    def field_at(self, position):
+        Bx, By, Bz = 0, 0, 0
+        for particle in self.field_contributions:
+            vx, vy, vz = particle.velocity
+            dx, dy, dz = [
+                position[i] - particle.positions[-1][i] for i in range(3)
+            ]
+            r = math.sqrt(dx**2 + dy**2 + dz**2)
+            if r == 0:
+                continue
+            force_magnitude = k_e * particle.charge / r**2
+            Bx += force_magnitude * (vy * dz - vz * dy) / r
+            By += force_magnitude * (vz * dx - vx * dz) / r
+            Bz += force_magnitude * (vx * dy - vy * dx) / r
+        return [Bx, By, Bz]
+
+    def apply(self, particle, time_step, field_strength):
         if len(particle.velocity) != 3:
-            raise ValueError("MagneticField currently only supports 3D velocity")
+            raise ValueError(
+                "MagneticField currently only supports 3D velocity"
+            )
         vx, vy, vz = particle.velocity
-        Bx, By, Bz = self.field_function(particle.positions[-1])
+        Bx, By, Bz = field_strength
         force_x = particle.charge * (vy * Bz - vz * By)
         force_y = particle.charge * (vz * Bx - vx * Bz)
         force_z = particle.charge * (vx * By - vy * Bx)
@@ -41,33 +91,57 @@ class MagneticField:
             new_vz = particle.velocity[2] + az * time_step
             particle.update_velocity([new_vx, new_vy, new_vz])
 
+
 class GravitationalField:
-    def apply(self, particles, time_step):
-        num_particles = len(particles)
-        for i in range(num_particles):
-            for j in range(i + 1, num_particles):
-                p1 = particles[i]
-                p2 = particles[j]
-                distance_vector = [p2.positions[-1][k] - p1.positions[-1][k] for k in range(p1.dimensions)]
-                distance = math.sqrt(sum(d ** 2 for d in distance_vector))
-                if distance == 0:
-                    continue  # Avoid division by zero
+    def __init__(self):
+        self.field_contributions = []
 
-                force_magnitude = G * p1.mass * p2.mass / distance ** 2
-                force_vector = [force_magnitude * d / distance for d in distance_vector]
+    def update(self, particles):
+        self.field_contributions = []
+        for particle in particles:
+            if particle.mass != 0:
+                self.field_contributions.append(particle)
 
-                if p1.mass > 0:
-                    acceleration1 = [f / p1.mass for f in force_vector]
-                    new_velocity1 = [p1.velocity[k] + acceleration1[k] * time_step for k in range(p1.dimensions)]
-                    p1.update_velocity(new_velocity1)
+    def field_at(self, position):
+        Fx, Fy, Fz = 0, 0, 0
+        for particle in self.field_contributions:
+            dx, dy, dz = [
+                position[i] - particle.positions[-1][i] for i in range(3)
+            ]
+            r = math.sqrt(dx**2 + dy**2 + dz**2)
+            if r == 0:
+                continue
+            force_magnitude = G * particle.mass / r**2
+            Fx += force_magnitude * dx / r
+            Fy += force_magnitude * dy / r
+            Fz += force_magnitude * dz / r
+        return [Fx, Fy, Fz]
 
-                if p2.mass > 0:
-                    acceleration2 = [-f / p2.mass for f in force_vector]
-                    new_velocity2 = [p2.velocity[k] + acceleration2[k] * time_step for k in range(p2.dimensions)]
-                    p2.update_velocity(new_velocity2)
+    def apply(self, particle, time_step, field_strength):
+        force = [particle.mass * f for f in field_strength]
+        if particle.mass > 0:
+            acceleration = [f / particle.mass for f in force]
+            new_velocity = [
+                particle.velocity[i] + acceleration[i] * time_step
+                for i in range(len(particle.velocity))
+            ]
+            particle.update_velocity(new_velocity)
+
 
 class Particle:
-    def __init__(self, name, symbol, mass, charge, spin, string_mode, decay_constant=0.0, decays_to=None, velocity=None, dimensions=3):
+    def __init__(
+        self,
+        name,
+        symbol,
+        mass,
+        charge,
+        spin,
+        string_mode,
+        decay_constant=0.0,
+        decays_to=None,
+        velocity=None,
+        dimensions=3,
+    ):
         self.name = name
         self.symbol = symbol
         self.mass = mass
@@ -77,7 +151,11 @@ class Particle:
         self.decay_constant = decay_constant
         self.decays_to = decays_to if decays_to else []
         self.dimensions = dimensions
-        self.velocity = velocity if velocity else [random.uniform(-0.5 * c, 0.5 * c) for _ in range(dimensions)]
+        self.velocity = (
+            velocity
+            if velocity
+            else [random.uniform(-0.5 * c, 0.5 * c) for _ in range(dimensions)]
+        )
         self.energy = self.calculate_energy()
         self.momentum = self.calculate_momentum()
         self.positions = [[0] * dimensions]  # Initial position at origin
@@ -114,7 +192,10 @@ class Particle:
         self.momentum = self.calculate_momentum()
 
     def update_position(self, time_step):
-        new_position = [self.positions[-1][i] + self.velocity[i] * time_step for i in range(self.dimensions)]
+        new_position = [
+            self.positions[-1][i] + self.velocity[i] * time_step
+            for i in range(self.dimensions)
+        ]
         self.positions.append(new_position)
 
     def decay(self, time_step):
@@ -130,14 +211,23 @@ class Particle:
                 product.energy = total_energy / num_products
                 product.momentum = [m / num_products for m in total_momentum]
                 if product.mass != 0:
-                    p_velocity_magnitude = math.sqrt(sum(m**2 for m in product.momentum) / product.mass**2)
+                    p_velocity_magnitude = math.sqrt(
+                        sum(m**2 for m in product.momentum)
+                        / product.mass**2
+                    )
                     if p_velocity_magnitude >= c:
                         scale = (c * 0.99) / p_velocity_magnitude
                         p_velocity_magnitude *= scale
-                    product.update_velocity([m / product.mass for m in product.momentum])
+                    product.update_velocity(
+                        [m / product.mass for m in product.momentum]
+                    )
                 else:
-                    product.velocity = [m / product.energy * c for m in product.momentum]
-            print(f"{self.name} decays into {', '.join([p.symbol for p in decay_products])}")
+                    product.velocity = [
+                        m / product.energy * c for m in product.momentum
+                    ]
+            print(
+                f"{self.name} decays into {', '.join([p.symbol for p in decay_products])}"
+            )
             return decay_products
         else:
             return [self]
@@ -146,12 +236,28 @@ class Particle:
         if self.string_mode == other.string_mode:
             new_mass = self.mass + other.mass
             new_charge = self.charge + other.charge
-            new_velocity = [(self.velocity[i] + other.velocity[i]) / 2 for i in range(self.dimensions)]
-            new_particle = Particle(f"NewParticle({self.symbol}+{other.symbol})", f"{self.symbol}{other.symbol}", new_mass, new_charge, 0, self.string_mode, velocity=new_velocity, dimensions=self.dimensions)
-            print(f"{self.name} and {other.name} collide to form {new_particle.name}")
+            new_velocity = [
+                (self.velocity[i] + other.velocity[i]) / 2
+                for i in range(self.dimensions)
+            ]
+            new_particle = Particle(
+                f"NewParticle({self.symbol}+{other.symbol})",
+                f"{self.symbol}{other.symbol}",
+                new_mass,
+                new_charge,
+                0,
+                self.string_mode,
+                velocity=new_velocity,
+                dimensions=self.dimensions,
+            )
+            print(
+                f"{self.name} and {other.name} collide to form {new_particle.name}"
+            )
             return new_particle
         else:
-            print(f"{self.name} and {other.name} have different string modes and cannot collide")
+            print(
+                f"{self.name} and {other.name} have different string modes and cannot collide"
+            )
             return None
 
     def scatter(self, other):
@@ -160,25 +266,56 @@ class Particle:
             other_velocity = other.velocity
             self.update_velocity(other_velocity)
             other.update_velocity(self_velocity)
-            print(f"{self.name} and {other.name} scatter, exchanging velocities")
+            print(
+                f"{self.name} and {other.name} scatter, exchanging velocities"
+            )
         else:
-            print(f"{self.name} and {other.name} have different string modes and cannot scatter")
+            print(
+                f"{self.name} and {other.name} have different string modes and cannot scatter"
+            )
 
     def annihilate(self, other):
         if self.charge + other.charge == 0:
             if self.string_mode == other.string_mode:
                 total_energy = self.energy + other.energy
-                photon1 = Particle("Photon", "γ", 0, 0, 1, self.string_mode, velocity=[c if i == 0 else 0 for i in range(self.dimensions)], dimensions=self.dimensions)
-                photon2 = Particle("Photon", "γ", 0, 0, 1, self.string_mode, velocity=[-c if i == 0 else 0 for i in range(self.dimensions)], dimensions=self.dimensions)
+                photon1 = Particle(
+                    "Photon",
+                    "γ",
+                    0,
+                    0,
+                    1,
+                    self.string_mode,
+                    velocity=[
+                        c if i == 0 else 0 for i in range(self.dimensions)
+                    ],
+                    dimensions=self.dimensions,
+                )
+                photon2 = Particle(
+                    "Photon",
+                    "γ",
+                    0,
+                    0,
+                    1,
+                    self.string_mode,
+                    velocity=[
+                        -c if i == 0 else 0 for i in range(self.dimensions)
+                    ],
+                    dimensions=self.dimensions,
+                )
                 photon1.energy = total_energy / 2
                 photon2.energy = total_energy / 2
-                print(f"{self.name} and {other.name} annihilate to form two photons")
+                print(
+                    f"{self.name} and {other.name} annihilate to form two photons"
+                )
                 return [photon1, photon2]
             else:
-                print(f"{self.name} and {other.name} have different string modes and cannot annihilate")
+                print(
+                    f"{self.name} and {other.name} have different string modes and cannot annihilate"
+                )
                 return [self, other]
         else:
             return [self, other]
+
 
 def simulate_interactions(particles, fields, steps):
     for step in range(steps):
@@ -190,7 +327,10 @@ def simulate_interactions(particles, fields, steps):
             for j in range(i + 1, len(particles_copy)):
                 p1 = particles_copy[i]
                 p2 = particles_copy[j]
-                if (p1, p2) in interactions_done or (p2, p1) in interactions_done:
+                if (p1, p2) in interactions_done or (
+                    p2,
+                    p1,
+                ) in interactions_done:
                     continue
                 interactions_done.add((p1, p2))
                 if p1.charge + p2.charge == 0 and random.random() < 0.1:
@@ -200,7 +340,9 @@ def simulate_interactions(particles, fields, steps):
                         particles.remove(p1)
                     if p2 in particles:
                         particles.remove(p2)
-                elif p1.string_mode == p2.string_mode and random.random() < 0.1:
+                elif (
+                    p1.string_mode == p2.string_mode and random.random() < 0.1
+                ):
                     new_particle = p1.collide(p2)
                     if new_particle:
                         particles.append(new_particle)
@@ -208,18 +350,31 @@ def simulate_interactions(particles, fields, steps):
                             particles.remove(p1)
                         if p2 in particles:
                             particles.remove(p2)
-                elif p1.string_mode == p2.string_mode and random.random() < 0.1:
+                elif (
+                    p1.string_mode == p2.string_mode and random.random() < 0.1
+                ):
                     p1.scatter(p2)
 
         for field in fields:
-            if isinstance(field, GravitationalField):
-                field.apply(particles, 1 / steps)
-            else:
-                for particle in particles:
-                    field.apply(particle, 1 / steps)
+            field.update(
+                particles
+            )  # Update field contributions based on particle positions
+
+        for field in fields:
+            for particle in particles:
+                if (
+                    isinstance(field, ElectricField)
+                    or isinstance(field, MagneticField)
+                    or isinstance(field, GravitationalField)
+                ):
+                    field_strength = field.field_at(particle.positions[-1])
+                    field.apply(particle, 1 / steps, field_strength)
 
         for particle in particles[:]:
-            new_velocity = [v + random.uniform(-0.01 * c, 0.01 * c) for v in particle.velocity]
+            new_velocity = [
+                v + random.uniform(-0.01 * c, 0.01 * c)
+                for v in particle.velocity
+            ]
             particle.update_velocity(new_velocity)
             particle.update_position(1 / steps)
             decay_products = particle.decay(1 / steps)
@@ -230,6 +385,7 @@ def simulate_interactions(particles, fields, steps):
         print("Current particles:")
         for particle in particles:
             print(particle)
+
 
 def visualize_particles(particles):
     fig, ax = plt.subplots()
@@ -242,6 +398,7 @@ def visualize_particles(particles):
     ax.legend()
     plt.show()
 
+
 def electric_field_function(position):
     # Example of a position-dependent electric field
     x, y, z = position
@@ -249,6 +406,7 @@ def electric_field_function(position):
     Ey = 1e5 * math.sin(2 * math.pi * y / 1e6)
     Ez = 1e5 * math.sin(2 * math.pi * z / 1e6)
     return [Ex, Ey, Ez]
+
 
 def magnetic_field_function(position):
     # Example of a position-dependent magnetic field
@@ -258,24 +416,113 @@ def magnetic_field_function(position):
     Bz = 1 * math.cos(2 * math.pi * z / 1e6)
     return [Bx, By, Bz]
 
+
 def simulate():
-    electron = Particle("Electron", "e", 0.511, -1, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
-    electron_neutrino = Particle("Electron Neutrino", "νe", 0.0000022, 0, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
-    muon_neutrino = Particle("Muon Neutrino", "νμ", 0.17, 0, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
-    tau_neutrino = Particle("Tau Neutrino", "ντ", 15.5, 0, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
-    muon = Particle("Muon", "μ", 105.66, -1, 1 / 2, "mode_known", 0.1, decays_to=[[electron, electron_neutrino, muon_neutrino]], velocity=[0.05 * c, 0.1 * c, 0.05 * c], dimensions=3)
-    tau = Particle("Tau", "τ", 1776.86, -1, 1 / 2, "mode_known", 0.2, decays_to=[[muon, muon_neutrino, tau_neutrino]], velocity=[0.01 * c, 0.02 * c, 0.01 * c], dimensions=3)
-    photon = Particle("Photon", "γ", 0, 0, 1, "mode_known", velocity=[c, c, c], dimensions=3)
-    proton = Particle("Proton", "p", 938.27, 1, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
-    graviton = Particle("Graviton", "G", 0, 0, 2, "mode_unknown", velocity=[0.5 * c, 0.5 * c, 0.5 * c], dimensions=3)
-    axion = Particle("Axion", "a", 1e-5, 0, 0, "mode_unknown", velocity=[0.05 * c, 0.1 * c, 0.05 * c], dimensions=3)
+    electron = Particle(
+        "Electron",
+        "e",
+        0.511,
+        -1,
+        1 / 2,
+        "mode_known",
+        velocity=[0.1 * c, 0.2 * c, 0.1 * c],
+        dimensions=3,
+    )
+    electron_neutrino = Particle(
+        "Electron Neutrino",
+        "νe",
+        0.0000022,
+        0,
+        1 / 2,
+        "mode_known",
+        velocity=[0.1 * c, 0.2 * c, 0.1 * c],
+        dimensions=3,
+    )
+    muon_neutrino = Particle(
+        "Muon Neutrino",
+        "νμ",
+        0.17,
+        0,
+        1 / 2,
+        "mode_known",
+        velocity=[0.1 * c, 0.2 * c, 0.1 * c],
+        dimensions=3,
+    )
+    tau_neutrino = Particle(
+        "Tau Neutrino",
+        "ντ",
+        15.5,
+        0,
+        1 / 2,
+        "mode_known",
+        velocity=[0.1 * c, 0.2 * c, 0.1 * c],
+        dimensions=3,
+    )
+    muon = Particle(
+        "Muon",
+        "μ",
+        105.66,
+        -1,
+        1 / 2,
+        "mode_known",
+        0.1,
+        decays_to=[[electron, electron_neutrino, muon_neutrino]],
+        velocity=[0.05 * c, 0.1 * c, 0.05 * c],
+        dimensions=3,
+    )
+    tau = Particle(
+        "Tau",
+        "τ",
+        1776.86,
+        -1,
+        1 / 2,
+        "mode_known",
+        0.2,
+        decays_to=[[muon, muon_neutrino, tau_neutrino]],
+        velocity=[0.01 * c, 0.02 * c, 0.01 * c],
+        dimensions=3,
+    )
+    photon = Particle(
+        "Photon", "γ", 0, 0, 1, "mode_known", velocity=[c, c, c], dimensions=3
+    )
+    proton = Particle(
+        "Proton",
+        "p",
+        938.27,
+        1,
+        1 / 2,
+        "mode_known",
+        velocity=[0.1 * c, 0.2 * c, 0.1 * c],
+        dimensions=3,
+    )
+    graviton = Particle(
+        "Graviton",
+        "G",
+        0,
+        0,
+        2,
+        "mode_unknown",
+        velocity=[0.5 * c, 0.5 * c, 0.5 * c],
+        dimensions=3,
+    )
+    axion = Particle(
+        "Axion",
+        "a",
+        1e-5,
+        0,
+        0,
+        "mode_unknown",
+        velocity=[0.05 * c, 0.1 * c, 0.05 * c],
+        dimensions=3,
+    )
     particles = [electron, proton, tau, muon, photon, graviton, axion]
-    fields = [ElectricField(electric_field_function), MagneticField(magnetic_field_function), GravitationalField()]
+    fields = [ElectricField(), MagneticField(), GravitationalField()]
     steps = 10
 
     print("Simulating interactions between particles in fields:")
     simulate_interactions(particles, fields, steps)
     visualize_particles(particles)
+
 
 if __name__ == "__main__":
     simulate()
