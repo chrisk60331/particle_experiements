@@ -3,13 +3,15 @@ import random
 import matplotlib.pyplot as plt
 
 c = 299792458  # speed of light in m/s
+G = 6.67430e-11  # gravitational constant in m^3 kg^-1 s^-2
 
 class ElectricField:
-    def __init__(self, field_strength):
-        self.field_strength = field_strength
+    def __init__(self, field_function):
+        self.field_function = field_function
 
     def apply(self, particle, time_step):
-        force = [particle.charge * f for f in self.field_strength]
+        field_strength = self.field_function(particle.positions[-1])
+        force = [particle.charge * f for f in field_strength]
 
         if particle.mass > 0:
             acceleration = [f / particle.mass for f in force]
@@ -17,14 +19,14 @@ class ElectricField:
             particle.update_velocity(new_velocity)
 
 class MagneticField:
-    def __init__(self, field_strength):
-        self.field_strength = field_strength
+    def __init__(self, field_function):
+        self.field_function = field_function
 
     def apply(self, particle, time_step):
         if len(particle.velocity) != 3:
             raise ValueError("MagneticField currently only supports 3D velocity")
         vx, vy, vz = particle.velocity
-        Bx, By, Bz = self.field_strength
+        Bx, By, Bz = self.field_function(particle.positions[-1])
         force_x = particle.charge * (vy * Bz - vz * By)
         force_y = particle.charge * (vz * Bx - vx * Bz)
         force_z = particle.charge * (vx * By - vy * Bx)
@@ -38,6 +40,31 @@ class MagneticField:
             new_vy = particle.velocity[1] + ay * time_step
             new_vz = particle.velocity[2] + az * time_step
             particle.update_velocity([new_vx, new_vy, new_vz])
+
+class GravitationalField:
+    def apply(self, particles, time_step):
+        num_particles = len(particles)
+        for i in range(num_particles):
+            for j in range(i + 1, num_particles):
+                p1 = particles[i]
+                p2 = particles[j]
+                distance_vector = [p2.positions[-1][k] - p1.positions[-1][k] for k in range(p1.dimensions)]
+                distance = math.sqrt(sum(d ** 2 for d in distance_vector))
+                if distance == 0:
+                    continue  # Avoid division by zero
+
+                force_magnitude = G * p1.mass * p2.mass / distance ** 2
+                force_vector = [force_magnitude * d / distance for d in distance_vector]
+
+                if p1.mass > 0:
+                    acceleration1 = [f / p1.mass for f in force_vector]
+                    new_velocity1 = [p1.velocity[k] + acceleration1[k] * time_step for k in range(p1.dimensions)]
+                    p1.update_velocity(new_velocity1)
+
+                if p2.mass > 0:
+                    acceleration2 = [-f / p2.mass for f in force_vector]
+                    new_velocity2 = [p2.velocity[k] + acceleration2[k] * time_step for k in range(p2.dimensions)]
+                    p2.update_velocity(new_velocity2)
 
 class Particle:
     def __init__(self, name, symbol, mass, charge, spin, string_mode, decay_constant=0.0, decays_to=None, velocity=None, dimensions=3):
@@ -185,8 +212,11 @@ def simulate_interactions(particles, fields, steps):
                     p1.scatter(p2)
 
         for field in fields:
-            for particle in particles:
-                field.apply(particle, 1 / steps)
+            if isinstance(field, GravitationalField):
+                field.apply(particles, 1 / steps)
+            else:
+                for particle in particles:
+                    field.apply(particle, 1 / steps)
 
         for particle in particles[:]:
             new_velocity = [v + random.uniform(-0.01 * c, 0.01 * c) for v in particle.velocity]
@@ -212,6 +242,22 @@ def visualize_particles(particles):
     ax.legend()
     plt.show()
 
+def electric_field_function(position):
+    # Example of a position-dependent electric field
+    x, y, z = position
+    Ex = 1e5 * math.sin(2 * math.pi * x / 1e6)
+    Ey = 1e5 * math.sin(2 * math.pi * y / 1e6)
+    Ez = 1e5 * math.sin(2 * math.pi * z / 1e6)
+    return [Ex, Ey, Ez]
+
+def magnetic_field_function(position):
+    # Example of a position-dependent magnetic field
+    x, y, z = position
+    Bx = 1 * math.cos(2 * math.pi * x / 1e6)
+    By = 1 * math.cos(2 * math.pi * y / 1e6)
+    Bz = 1 * math.cos(2 * math.pi * z / 1e6)
+    return [Bx, By, Bz]
+
 def simulate():
     electron = Particle("Electron", "e", 0.511, -1, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
     electron_neutrino = Particle("Electron Neutrino", "νe", 0.0000022, 0, 1 / 2, "mode_known", velocity=[0.1 * c, 0.2 * c, 0.1 * c], dimensions=3)
@@ -224,7 +270,7 @@ def simulate():
     graviton = Particle("Graviton", "G", 0, 0, 2, "mode_unknown", velocity=[0.5 * c, 0.5 * c, 0.5 * c], dimensions=3)
     axion = Particle("Axion", "a", 1e-5, 0, 0, "mode_unknown", velocity=[0.05 * c, 0.1 * c, 0.05 * c], dimensions=3)
     particles = [electron, proton, tau, muon, photon, graviton, axion]
-    fields = [ElectricField([1e5, 0, 0]), MagneticField([0, 0, 1])]
+    fields = [ElectricField(electric_field_function), MagneticField(magnetic_field_function), GravitationalField()]
     steps = 10
 
     print("Simulating interactions between particles in fields:")
