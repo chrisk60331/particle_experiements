@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 c = 299792458  # speed of light in m/s
 G = 6.67430e-11  # gravitational constant in m^3 kg^-1 s^-2
 k_e = 8.9875517873681764e9  # Coulomb constant in N m^2 C^-2
+k_s = 1e38  # Strong force constant (arbitrary large value for simplicity)
+strong_force_range = 1e-15  # Strong force range in meters (1 femtometer)
 
 
 class ElectricField:
@@ -117,8 +119,41 @@ class GravitationalField:
             particle.update_velocity(new_velocity)
 
 
+class StrongForceField:
+    def __init__(self):
+        self.field_contributions = []
+
+    def update(self, particles):
+        self.field_contributions = []
+        for particle in particles:
+            if particle.color_charge != 0:
+                self.field_contributions.append(particle)
+
+    def field_at(self, position):
+        Sx, Sy, Sz = 0, 0, 0
+        for particle in self.field_contributions:
+            dx, dy, dz = [position[i] - particle.positions[-1][i] for i in range(3)]
+            r = math.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
+            if r == 0 or r > strong_force_range:
+                continue
+            force_magnitude = k_s * particle.color_charge / r ** 2
+            Sx += force_magnitude * dx / r
+            Sy += force_magnitude * dy / r
+            Sz += force_magnitude * dz / r
+        return [Sx, Sy, Sz]
+
+    def apply(self, particle, time_step, field_strength):
+        if particle.color_charge == 0:
+            return
+        force = [particle.color_charge * f for f in field_strength]
+        if particle.mass > 0:
+            acceleration = [f / particle.mass for f in force]
+            new_velocity = [particle.velocity[i] + acceleration[i] * time_step for i in range(len(particle.velocity))]
+            particle.update_velocity(new_velocity)
+
+
 class Particle:
-    def __init__(self, name, symbol, mass, charge, spin, string_mode, decay_constant=0.0, decays_to=None, velocity=None,
+    def __init__(self, name, symbol, mass, charge, spin, string_mode, color_charge=0, decay_constant=0.0, decays_to=None, velocity=None,
                  dimensions=3):
         self.name = name
         self.symbol = symbol
@@ -126,13 +161,14 @@ class Particle:
         self.charge = charge
         self.spin = spin
         self.string_mode = string_mode
+        self.color_charge = color_charge
         self.decay_constant = decay_constant
         self.decays_to = decays_to if decays_to else []
         self.dimensions = dimensions
         self.velocity = velocity if velocity else [random.uniform(-0.5 * c, 0.5 * c) for _ in range(dimensions)]
         self.energy = self.calculate_energy()
         self.momentum = self.calculate_momentum()
-        self.positions = [[0] * dimensions]  # Initial position at origin
+        self.positions = [[0] * dimensions]
 
     def __repr__(self):
         return f"{self.name} ({self.symbol}): Mass={self.mass} MeV/c^2, Charge={self.charge}e, Spin={self.spin}, String Mode={self.string_mode}, Velocity={self.velocity}, Energy={self.energy} MeV, Momentum={self.momentum} MeV/c"
@@ -346,7 +382,7 @@ def simulate():
                                     velocity=[0.1 * c, 0.1 * c, 0.1 * c], dimensions=3)
 
     particles = [electron, proton, tau, muon, photon, graviton, axion, dark_matter_particle]
-    fields = [ElectricField(), MagneticField(), GravitationalField()]
+    fields = [ElectricField(), MagneticField(), GravitationalField(), StrongForceField()]
     steps = 10
 
     print("Simulating interactions between particles in fields:")
