@@ -135,6 +135,12 @@ cd pythia8303
 ./configure --with-python-config=[path to python-config]
 make
 ```
+## Usage
+To run the simulation run the PythiaMain.py file
+```sh
+python PythiaMain.py
+```
+The simulation is configured to collide two protons at a glancing angle and display the visual. 
 
 ## Feature Roadmap
 
