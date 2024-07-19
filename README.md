@@ -124,6 +124,18 @@ steps = 10
 simulate_interactions(particles, fields, steps)
 ```
 
+---
+# Pythia Simulation
+The installation steps here are a bit involved.
+Obviously this simulation is dependent on pythia which you can install here https://pythia.org
+Download the tarball and run the following commands to install it.
+```sh
+tar -xzvf pythia8303.tgz
+cd pythia8303
+./configure --with-python-config=[path to python-config]
+make
+```
+
 ## Feature Roadmap
 
 ### Proposed Upcoming Features
