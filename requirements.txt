@@ -1,6 +1,2 @@
 matplotlib
-particle
-numpy
-vispy
-imageio
-PyQt6
+
